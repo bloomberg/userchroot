@@ -292,22 +292,21 @@ static int child_fn(void* v) {
       stderr,
       "Failed to mkdir /proc. Error: %s\n", strerror(errno)
     );
-    return 1;
   }
-
-  rc = mount(
-          "proc", 
-          "/proc", 
-          "proc", 
-          MS_REC|MS_NOSUID|MS_NODEV|MS_NOEXEC,
-          NULL
-       );
-  if(0 != rc) {
-    fprintf(
-      stderr,
-      "Failed to mount proc. Error: %s\n", strerror(errno)
-    );
-    return 1;
+  else {
+    rc = mount(
+            "proc", 
+            "/proc", 
+            "proc", 
+            MS_REC|MS_NOSUID|MS_NODEV|MS_NOEXEC,
+            NULL
+         );
+    if(0 != rc) {
+      fprintf(
+        stderr,
+        "Failed to mount proc. Error: %s\n", strerror(errno)
+      );
+    }
   }
 
   epilogue(ed);
