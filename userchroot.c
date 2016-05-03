@@ -10,6 +10,7 @@
       #define _GNU_SOURCE
       #include <sched.h>
       #include <sys/mount.h>
+      #include <sys/wait.h>
     #endif
   #endif
 #endif
@@ -224,6 +225,99 @@ static void portable_clearenv() {
   }
 #endif
 }
+
+struct epilogue_data {
+    uid_t target_user;
+    char** argv;
+    char** envp;
+};
+
+void epilogue(struct epilogue_data* d) {
+
+    // Now we need to relinquish our powers back to the calling user.
+    int rc = setuid(d->target_user);
+    if (rc != 0) {
+      fprintf(stderr,"Failed to give up privileges. Aborting.\n");
+      exit(ERR_EXIT_CODE);
+    }
+
+    // Before executing, even if the system call succeeded, let's make
+    // sure we would fail in trying to regain privileges
+    if (setuid(0) == 0 || seteuid(0) == 0 ||
+        setgid(0) == 0 || setegid(0) == 0) {
+      fprintf(stderr,"Failed to give up privileges. Aborting.\n");
+      exit(ERR_EXIT_CODE);
+    }
+    if (getuid() == 0 || geteuid() == 0 ||
+        getgid() == 0 || getegid() == 0) {
+      fprintf(stderr,"Failed to give up privileges. Aborting.\n");
+      exit(ERR_EXIT_CODE);
+    }
+
+
+    rc = chdir("/");
+    if (rc != 0) {
+      fprintf(stderr,"Failed to chdir to the root directory. Aborting.\n");
+      exit(ERR_EXIT_CODE);
+    }
+
+    // And finally, execute the desired command.
+    // we skip the first two arguments from argv and do a execve.
+    d->argv++;d->argv++;
+    whitelist_char_check(d->argv[0], 1);
+    execve(d->argv[0],d->argv,d->envp);
+    // if we are here, it means something went wrong.
+    fprintf(stderr,"Failed to exec %s: %s\n", d->argv[0], strerror(errno));
+    exit(ERR_EXIT_CODE);
+}
+
+#ifdef __linux__
+  #ifdef MOUNT_PROC
+    #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
+
+static char child_stack[1048576];
+
+static int child_fn(void* v) {
+  
+  struct epilogue_data* ed = (struct epilogue_data*)v;
+
+  //Since we're in the chroot, we don't need to unmount the current
+  //proc, simply because there isn't any current proc mounted.
+  //
+  //Mount the child's view of proc, which includes only processes
+  //in its namespace
+  int rc = mkdir("/proc", S_IRWXU);
+  if(0 != rc && EEXIST != errno) {
+    fprintf(
+      stderr,
+      "Failed to mkdir /proc. Error: %s\n", strerror(errno)
+    );
+    return 1;
+  }
+
+  rc = mount(
+          "proc", 
+          "/proc", 
+          "proc", 
+          MS_REC|MS_NOSUID|MS_NODEV|MS_NOEXEC,
+          NULL
+       );
+  if(0 != rc) {
+    fprintf(
+      stderr,
+      "Failed to mount proc. Error: %s\n", strerror(errno)
+    );
+    return 1;
+  }
+
+  epilogue(ed);
+  return 0;
+}
+
+    #endif
+  #endif
+#endif
+
 
 int main(int argc, char* argv[], char* envp[]) {
   portable_clearenv();
@@ -453,109 +547,45 @@ int main(int argc, char* argv[], char* envp[]) {
       fprintf(stderr,"Failed to chroot. Aborting.\n");
       exit(ERR_EXIT_CODE);
     } 
-
+    
+    struct epilogue_data* ed = 
+        (struct epilogue_data*)malloc(sizeof(struct epilogue_data));
+    if(NULL == ed) {
+      fprintf(stderr,"Failed to allocate epilogue_data. Aborting.\n");
+      exit(ERR_EXIT_CODE);
+    }
+    ed->target_user = target_user;
+    ed->argv = argv;
+    ed->envp = envp;
 #ifdef __linux__
   #ifdef MOUNT_PROC
     #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
-    
+
     //Our goal here is to mount /proc without exposing other processes to the 
     //invoked command. Basically, /proc should only give the invoked command
     //a view of itself and all the processes it forked. 
-    
-    //Unshare the pid and the mount namespaces
-    rc = unshare(CLONE_NEWNS | CLONE_NEWPID);
-    if(0 != rc) {
-      fprintf(
-          stderr,
-          "Failed to unshare pid namespace. Error: %s\n", strerror(errno)
-      );
+
+    pid_t child_pid = 
+        clone(
+            child_fn, 
+            child_stack+sizeof(child_stack), 
+            CLONE_NEWNS | CLONE_NEWPID | SIGCHLD,
+            ed
+        );
+    if(-1 == child_pid) {
+      fprintf(stderr, "Failed to clone. Error: %s\n", strerror(errno));
     }
     else {
-        
-      pid_t pid = fork();
-      if(-1 == pid) {
-          fprintf(
-            stderr,
-            "Failed to fork. Error: %s\n", strerror(errno)
-          );
-      }
-      //Parent
-      else if(0 != pid) {
         int child_status = 0;
-        waitpid(pid, &child_status, 0);
+        waitpid(child_pid, &child_status, 0);
         return child_status;
-      }
-      //Child
-      else {
-        //Since we're in the chroot, we don't need to unmount the current
-        //proc, simply because there isn't any current proc mounted.
-        //
-        //Mount the child's view of proc, which includes only processes
-        //in its namespace
-        rc = mkdir("/proc", S_IRWXU);
-        if(0 != rc && EEXIST != errno) {
-          fprintf(
-            stderr,
-            "Failed to mkdir /proc. Error: %s\n", strerror(errno)
-          );
-        }
-        else {
-          rc = mount(
-                  "proc", 
-                  "/proc", 
-                  "proc", 
-                  MS_REC|MS_NOSUID|MS_NODEV|MS_NOEXEC,
-                  NULL
-               );
-          if(0 != rc) {
-            fprintf(
-              stderr,
-              "Failed to mount proc. Error: %s\n", strerror(errno)
-            );
-          } //End of checking rc of mount
-        } //End of checking rc of mkdir
-      } //End of checking for child
-    } //End of checking rc for unshare
+    }
+    
     #endif
   #endif
 #endif
 
-    // Now we need to relinquish our powers back to the calling user.
-    rc = setuid(target_user);
-    if (rc != 0) {
-      fprintf(stderr,"Failed to give up privileges. Aborting.\n");
-      exit(ERR_EXIT_CODE);
-    }
-
-    // Before executing, even if the system call succeeded, let's make
-    // sure we would fail in trying to regain privileges
-    if (setuid(0) == 0 || seteuid(0) == 0 ||
-        setgid(0) == 0 || setegid(0) == 0) {
-      fprintf(stderr,"Failed to give up privileges. Aborting.\n");
-      exit(ERR_EXIT_CODE);
-    }
-    if (getuid() == 0 || geteuid() == 0 ||
-        getgid() == 0 || getegid() == 0) {
-      fprintf(stderr,"Failed to give up privileges. Aborting.\n");
-      exit(ERR_EXIT_CODE);
-    }
-
-
-    rc = chdir("/");
-    if (rc != 0) {
-      fprintf(stderr,"Failed to chdir to the root directory. Aborting.\n");
-      exit(ERR_EXIT_CODE);
-    }
-
-    // And finally, execute the desired command.
-    // we skip the first two arguments from argv and do a execve.
-    argv++;argv++;
-    whitelist_char_check(argv[0], 1);
-    execve(argv[0],argv,envp);
-    // if we are here, it means something went wrong.
-    fprintf(stderr,"Failed to exec %s: %s\n", argv[0], strerror(errno));
-    exit(ERR_EXIT_CODE);
-
+    epilogue(ed);
   }
 }
 
