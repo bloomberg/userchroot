@@ -11,7 +11,8 @@ HAVE_CLEARENV:=$(shell CC=$(CC) $(VPATH)/test-clearenv.sh && \
 
 CFLAGS+= -DCONFIGFILE=$(CONFIGFILE) \
 	 -DVERSION_STRING=$(VERSION_STRING) \
-	 $(HAVE_CLEARENV)
+	 $(HAVE_CLEARENV) \
+	 -DMOUNT_PROC
 
 SOURCES:=userchroot.c fundamental_devices.c
 OBJECTS:=$(subst .c,.o,$(SOURCES))
