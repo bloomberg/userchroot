@@ -1,7 +1,17 @@
 #ifdef __linux__
-#define _GNU_SOURCE
-#include <sched.h>
-#include <sys/mount.h>
+  #ifdef MOUNT_PROC
+    #include <linux/version.h>
+  #endif
+#endif
+
+#ifdef __linux__
+  #ifdef MOUNT_PROC
+    #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
+      #define _GNU_SOURCE
+      #include <sched.h>
+      #include <sys/mount.h>
+    #endif
+  #endif
 #endif
 
 #include <unistd.h>
@@ -445,6 +455,9 @@ int main(int argc, char* argv[], char* envp[]) {
     } 
 
 #ifdef __linux__
+  #ifdef MOUNT_PROC
+    #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
+    
     //Our goal here is to mount /proc without exposing other processes to the 
     //invoked command. Basically, /proc should only give the invoked command
     //a view of itself and all the processes it forked. 
@@ -503,6 +516,8 @@ int main(int argc, char* argv[], char* envp[]) {
         } //End of checking rc of mkdir
       } //End of checking for child
     } //End of checking rc for unshare
+    #endif
+  #endif
 #endif
 
     // Now we need to relinquish our powers back to the calling user.
