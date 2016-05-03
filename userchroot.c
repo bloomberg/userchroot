@@ -1,3 +1,9 @@
+#ifdef __linux__
+#define _GNU_SOURCE
+#include <sched.h>
+#include <sys/mount.h>
+#endif
+
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
@@ -8,6 +14,7 @@
 #include <sys/stat.h>
 #include "userchroot.h"
 #include "fundamental_devices.h"
+
 
 /*
  * The userchroot utility will call chroot for one specific directory
@@ -435,7 +442,68 @@ int main(int argc, char* argv[], char* envp[]) {
     if (rc != 0) {
       fprintf(stderr,"Failed to chroot. Aborting.\n");
       exit(ERR_EXIT_CODE);
+    } 
+
+#ifdef __linux__
+    //Our goal here is to mount /proc without exposing other processes to the 
+    //invoked command. Basically, /proc should only give the invoked command
+    //a view of itself and all the processes it forked. 
+    
+    //Unshare the pid and the mount namespaces
+    rc = unshare(CLONE_NEWNS | CLONE_NEWPID);
+    if(0 != rc) {
+      fprintf(
+          stderr,
+          "Failed to unshare pid namespace. Error: %s\n", strerror(errno)
+      );
     }
+    else {
+        
+      pid_t pid = fork();
+      if(-1 == pid) {
+          fprintf(
+            stderr,
+            "Failed to fork. Error: %s\n", strerror(errno)
+          );
+      }
+      //Parent
+      else if(0 != pid) {
+        int child_status = 0;
+        waitpid(pid, &child_status, 0);
+        return child_status;
+      }
+      //Child
+      else {
+        //Since we're in the chroot, we don't need to unmount the current
+        //proc, simply because there isn't any current proc mounted.
+        //
+        //Mount the child's view of proc, which includes only processes
+        //in its namespace
+        rc = mkdir("/proc", S_IRWXU);
+        if(0 != rc && EEXIST != errno) {
+          fprintf(
+            stderr,
+            "Failed to mkdir /proc. Error: %s\n", strerror(errno)
+          );
+        }
+        else {
+          rc = mount(
+                  "proc", 
+                  "/proc", 
+                  "proc", 
+                  MS_REC|MS_NOSUID|MS_NODEV|MS_NOEXEC,
+                  NULL
+               );
+          if(0 != rc) {
+            fprintf(
+              stderr,
+              "Failed to mount proc. Error: %s\n", strerror(errno)
+            );
+          } //End of checking rc of mount
+        } //End of checking rc of mkdir
+      } //End of checking for child
+    } //End of checking rc for unshare
+#endif
 
     // Now we need to relinquish our powers back to the calling user.
     rc = setuid(target_user);
