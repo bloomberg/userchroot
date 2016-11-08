@@ -278,7 +278,7 @@ void epilogue(struct epilogue_data* d) {
 static char child_stack[1048576];
 
 static int child_fn(void* v) {
-  
+
   struct epilogue_data* ed = (struct epilogue_data*)v;
 
   //Since we're in the chroot, we don't need to unmount the current
@@ -295,9 +295,9 @@ static int child_fn(void* v) {
   }
   else {
     rc = mount(
-            "proc", 
-            "/proc", 
-            "proc", 
+            "proc",
+            "/proc",
+            "proc",
             MS_REC|MS_NOSUID|MS_NODEV|MS_NOEXEC,
             NULL
          );
@@ -545,9 +545,9 @@ int main(int argc, char* argv[], char* envp[]) {
     if (rc != 0) {
       fprintf(stderr,"Failed to chroot. Aborting.\n");
       exit(ERR_EXIT_CODE);
-    } 
-    
-    struct epilogue_data* ed = 
+    }
+
+    struct epilogue_data* ed =
         (struct epilogue_data*)malloc(sizeof(struct epilogue_data));
     if(NULL == ed) {
       fprintf(stderr,"Failed to allocate epilogue_data. Aborting.\n");
@@ -560,14 +560,14 @@ int main(int argc, char* argv[], char* envp[]) {
   #ifdef MOUNT_PROC
     #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
 
-    //Our goal here is to mount /proc without exposing other processes to the 
+    //Our goal here is to mount /proc without exposing other processes to the
     //invoked command. Basically, /proc should only give the invoked command
-    //a view of itself and all the processes it forked. 
+    //a view of itself and all the processes it forked.
 
-    pid_t child_pid = 
+    pid_t child_pid =
         clone(
-            child_fn, 
-            child_stack+sizeof(child_stack), 
+            child_fn,
+            child_stack+sizeof(child_stack),
             CLONE_NEWNS | CLONE_NEWPID | SIGCHLD,
             ed
         );
@@ -579,7 +579,7 @@ int main(int argc, char* argv[], char* envp[]) {
         waitpid(child_pid, &child_status, 0);
         return child_status;
     }
-    
+
     #endif
   #endif
 #endif
