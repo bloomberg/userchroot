@@ -276,16 +276,17 @@ void epilogue(struct epilogue_data* d) {
     #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
 
 static char child_stack[1048576];
+static char proc_guard_stack[1048576];
 
 static int child_fn(void* v) {
 
   struct epilogue_data* ed = (struct epilogue_data*)v;
 
-  //Since we're in the chroot, we don't need to unmount the current
-  //proc, simply because there isn't any current proc mounted.
+  // Since we're in the chroot, we don't need to unmount the current
+  // proc, simply because there isn't any current proc mounted.
   //
-  //Mount the child's view of proc, which includes only processes
-  //in its namespace
+  // Mount the child's view of proc, which includes only processes
+  // in its namespace.
   int rc = mkdir("/proc", S_IRWXU);
   if(0 != rc && EEXIST != errno) {
     fprintf(
@@ -311,6 +312,29 @@ static int child_fn(void* v) {
 
   epilogue(ed);
   return 0;
+}
+
+static int proc_guard(void *v) {
+
+    pid_t child_pid =
+        clone(
+            child_fn,
+            child_stack+sizeof(child_stack),
+            CLONE_NEWNS | CLONE_NEWPID | SIGCHLD,
+            v
+        );
+    if(-1 == child_pid) {
+      fprintf(stderr, "Failed to clone. Error: %s\n", strerror(errno));
+    }
+    else {
+        int child_status = 0;
+        waitpid(child_pid, &child_status, 0);
+
+        umount("proc");
+
+        return child_status;
+    }
+
 }
 
     #endif
@@ -484,6 +508,7 @@ int main(int argc, char* argv[], char* envp[]) {
         break;
       }
     }
+
     if (!ignore && strncmp(line, rline, linelen) == 0) {
       found = 1;
       break;
@@ -494,7 +519,7 @@ int main(int argc, char* argv[], char* envp[]) {
     exit(ERR_EXIT_CODE);
   }
   if (!found) {
-    fprintf(stderr,"Permission Denied. Aborting.\n");
+    fprintf(stderr,"Permission Denied when reading config file. Aborting.\n");
     exit(ERR_EXIT_CODE);
   }
 
@@ -560,17 +585,17 @@ int main(int argc, char* argv[], char* envp[]) {
   #ifdef MOUNT_PROC
     #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
 
-    //Our goal here is to mount /proc without exposing other processes to the
-    //invoked command. Basically, /proc should only give the invoked command
-    //a view of itself and all the processes it forked.
-
+    // Our goal here is to mount /proc without exposing other processes to the
+    // invoked command. Basically, /proc should only give the invoked command
+    // a view of itself and all the processes it forked.
+    // However, we have to have two levels of indirection via clone so that we
+    // can detect the completion of the execve and cleanup after ourselves.
     pid_t child_pid =
-        clone(
-            child_fn,
-            child_stack+sizeof(child_stack),
+      clone(
+            proc_guard,
+            proc_guard_stack + sizeof(proc_guard_stack),
             CLONE_NEWNS | CLONE_NEWPID | SIGCHLD,
-            ed
-        );
+            ed);
     if(-1 == child_pid) {
       fprintf(stderr, "Failed to clone. Error: %s\n", strerror(errno));
     }
