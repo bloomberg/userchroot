@@ -330,7 +330,11 @@ static int proc_guard(void *v) {
         int child_status = 0;
         waitpid(child_pid, &child_status, 0);
 
-        umount("proc");
+        int umount_rc = umount("/proc");
+
+        if (umount_rc) {
+          fprintf(stderr, "Failed to umount. Error: %s\n", strerror(errno));
+        }
 
         return child_status;
     }
