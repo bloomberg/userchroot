@@ -1,18 +1,14 @@
-#ifdef __linux__
-  #ifdef MOUNT_PROC
-    #include <linux/version.h>
-  #endif
+#if defined (__linux__) && defined (MOUNT_PROC)
+#include <linux/version.h>
 #endif
 
-#ifdef __linux__
-  #ifdef MOUNT_PROC
-    #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
-      #define _GNU_SOURCE
-      #include <sched.h>
-      #include <sys/mount.h>
-      #include <sys/wait.h>
-    #endif
-  #endif
+#if defined (__linux__) && defined (MOUNT_PROC)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
+#define _GNU_SOURCE
+#include <sched.h>
+#include <sys/mount.h>
+#include <sys/wait.h>
+#endif
 #endif
 
 #include <unistd.h>
@@ -58,7 +54,7 @@
 
 // this two macros serve the purpose of turning a -D clause
 // into a constant char**
-// As saw in: http://gcc.gnu.org/onlinedocs/cpp/Stringification.html
+// As seen in: http://gcc.gnu.org/onlinedocs/cpp/Stringification.html
 #define EXPANDED2(X) #X
 #define EXPANDED(X) EXPANDED2(X)
 
@@ -227,60 +223,63 @@ static void portable_clearenv() {
 }
 
 struct epilogue_data {
-    uid_t target_user;
-    char** argv;
-    char** envp;
+  uid_t target_user;
+  char** argv;
+  char** envp;
 };
 
 void epilogue(struct epilogue_data* d) {
 
-    // Now we need to relinquish our powers back to the calling user.
-    int rc = setuid(d->target_user);
-    if (rc != 0) {
-      fprintf(stderr,"Failed to give up privileges. Aborting.\n");
-      exit(ERR_EXIT_CODE);
-    }
-
-    // Before executing, even if the system call succeeded, let's make
-    // sure we would fail in trying to regain privileges
-    if (setuid(0) == 0 || seteuid(0) == 0 ||
-        setgid(0) == 0 || setegid(0) == 0) {
-      fprintf(stderr,"Failed to give up privileges. Aborting.\n");
-      exit(ERR_EXIT_CODE);
-    }
-    if (getuid() == 0 || geteuid() == 0 ||
-        getgid() == 0 || getegid() == 0) {
-      fprintf(stderr,"Failed to give up privileges. Aborting.\n");
-      exit(ERR_EXIT_CODE);
-    }
-
-
-    rc = chdir("/");
-    if (rc != 0) {
-      fprintf(stderr,"Failed to chdir to the root directory. Aborting.\n");
-      exit(ERR_EXIT_CODE);
-    }
-
-    // And finally, execute the desired command.
-    // we skip the first two arguments from argv and do a execve.
-    d->argv++;d->argv++;
-    whitelist_char_check(d->argv[0], 1);
-    execve(d->argv[0],d->argv,d->envp);
-    // if we are here, it means something went wrong.
-    fprintf(stderr,"Failed to exec %s: %s\n", d->argv[0], strerror(errno));
+  // Now we need to relinquish our powers back to the calling user.
+  int rc = setuid(d->target_user);
+  if (rc != 0) {
+    fprintf(stderr,"Failed to give up privileges. Aborting.\n");
     exit(ERR_EXIT_CODE);
+  }
+
+  // Before executing, even if the system call succeeded, let's make
+  // sure we would fail in trying to regain privileges
+  if (setuid(0) == 0 || seteuid(0) == 0 ||
+      setgid(0) == 0 || setegid(0) == 0) {
+    fprintf(stderr,"Failed to give up privileges. Aborting.\n");
+    exit(ERR_EXIT_CODE);
+  }
+  if (getuid() == 0 || geteuid() == 0 ||
+      getgid() == 0 || getegid() == 0) {
+    fprintf(stderr,"Failed to give up privileges. Aborting.\n");
+    exit(ERR_EXIT_CODE);
+  }
+
+
+  rc = chdir("/");
+  if (rc != 0) {
+    fprintf(stderr,"Failed to chdir to the root directory. Aborting.\n");
+    exit(ERR_EXIT_CODE);
+  }
+
+  // And finally, execute the desired command.
+  // we skip the first two arguments from argv and do a execve.
+  d->argv++;d->argv++;
+  whitelist_char_check(d->argv[0], 1);
+  execve(d->argv[0],d->argv,d->envp);
+  // if we are here, it means something went wrong.
+  fprintf(stderr,"Failed to exec %s: %s\n", d->argv[0], strerror(errno));
+  exit(ERR_EXIT_CODE);
 }
 
-#ifdef __linux__
-  #ifdef MOUNT_PROC
-    #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
+#if defined (__linux__) && defined (MOUNT_PROC)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
 
 static char child_stack[1048576];
 static char proc_guard_stack[1048576];
 
 static int child_fn(void* v) {
-
   struct epilogue_data* ed = (struct epilogue_data*)v;
+  epilogue(ed);
+  return 0;
+}
+
+static int proc_guard(void *v) {
 
   // Since we're in the chroot, we don't need to unmount the current
   // proc, simply because there isn't any current proc mounted.
@@ -290,61 +289,62 @@ static int child_fn(void* v) {
   int rc = mkdir("/proc", S_IRWXU);
   if(0 != rc && EEXIST != errno) {
     fprintf(
-      stderr,
-      "Failed to mkdir /proc. Error: %s\n", strerror(errno)
-    );
+            stderr,
+            "Failed to mkdir /proc. Error: %s\n", strerror(errno)
+            );
+    return rc;
   }
   else {
     rc = mount(
-            "proc",
-            "/proc",
-            "proc",
-            MS_REC|MS_NOSUID|MS_NODEV|MS_NOEXEC,
-            NULL
-         );
+               "proc",
+               "/proc",
+               "proc",
+               MS_REC|MS_NOSUID|MS_NODEV|MS_NOEXEC,
+               NULL
+               );
     if(0 != rc) {
       fprintf(
-        stderr,
-        "Failed to mount proc. Error: %s\n", strerror(errno)
-      );
+              stderr,
+              "Failed to mount proc. Error: %s\n", strerror(errno)
+              );
+      return rc;
     }
   }
 
-  epilogue(ed);
-  return 0;
-}
-
-static int proc_guard(void *v) {
-
-    pid_t child_pid =
-        clone(
-            child_fn,
-            child_stack+sizeof(child_stack),
-            CLONE_NEWNS | CLONE_NEWPID | SIGCHLD,
-            v
-        );
-    if(-1 == child_pid) {
-      fprintf(stderr, "Failed to clone. Error: %s\n", strerror(errno));
-    }
-    else {
-        int child_status = 0;
-        waitpid(child_pid, &child_status, 0);
-
-        int umount_rc = umount("/proc");
-
-        if (umount_rc) {
-          fprintf(stderr, "Failed to umount. Error: %s\n", strerror(errno));
-        }
-
-        return child_status;
+  pid_t child_pid =
+    clone(
+          child_fn,
+          child_stack+sizeof(child_stack),
+          SIGCHLD,
+          v
+          );
+  if(-1 == child_pid) {
+    fprintf(stderr, "Failed to clone. Error: %s\n", strerror(errno));
+  }
+  else {
+    int child_status = 0;
+    int p = 0;
+    while (p = waitpid(child_pid, &child_status, 0)) {
+      if (p == child_pid || p == -1) {
+        break;
+      }
     }
 
-}
+    // always try and unmount even if the pid failed so we don't leak.
+    int umount_rc = umount("/proc");
 
-    #endif
-  #endif
+    if (umount_rc) {
+      fprintf(stderr, "Failed to umount. Error: %s\n", strerror(errno));
+    }
+
+    // now unlink the directory we made just to be clean.
+    rmdir("/proc");
+    return child_status;
+  }
+
+}
 #endif
-
+#endif
 
 int main(int argc, char* argv[], char* envp[]) {
   portable_clearenv();
@@ -577,7 +577,7 @@ int main(int argc, char* argv[], char* envp[]) {
     }
 
     struct epilogue_data* ed =
-        (struct epilogue_data*)malloc(sizeof(struct epilogue_data));
+      (struct epilogue_data*)malloc(sizeof(struct epilogue_data));
     if(NULL == ed) {
       fprintf(stderr,"Failed to allocate epilogue_data. Aborting.\n");
       exit(ERR_EXIT_CODE);
@@ -585,15 +585,15 @@ int main(int argc, char* argv[], char* envp[]) {
     ed->target_user = target_user;
     ed->argv = argv;
     ed->envp = envp;
-#ifdef __linux__
-  #ifdef MOUNT_PROC
-    #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
+#if defined (__linux__) && defined (MOUNT_PROC)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
 
-    // Our goal here is to mount /proc without exposing other processes to the
-    // invoked command. Basically, /proc should only give the invoked command
-    // a view of itself and all the processes it forked.
-    // However, we have to have two levels of indirection via clone so that we
-    // can detect the completion of the execve and cleanup after ourselves.
+    // Our goal here is to mount /proc without exposing other
+    // processes to the invoked command. Basically, /proc should only
+    // give the invoked command a view of itself and all the processes
+    // it forked.  However, we have to have two levels of indirection
+    // via clone so that we can detect the completion of the execve
+    // and cleanup after ourselves.
     pid_t child_pid =
       clone(
             proc_guard,
@@ -602,18 +602,28 @@ int main(int argc, char* argv[], char* envp[]) {
             ed);
     if(-1 == child_pid) {
       fprintf(stderr, "Failed to clone. Error: %s\n", strerror(errno));
+      return child_pid;
     }
     else {
-        int child_status = 0;
-        waitpid(child_pid, &child_status, 0);
-        return child_status;
+      int child_status = 0;
+      int p = 0;
+      while (p = waitpid(child_pid, &child_status, 0)) {
+        if (p == child_pid || p == -1) {
+          break;
+        }
+      }
+
+      return child_status;
     }
 
-    #endif
-  #endif
-#endif
-
+#else
     epilogue(ed);
+    // Should never get here as epilogue does execve but it's possible
+    // that the compiler wouldn't notice so we need to return from int
+    // main here.
+    return 0;
+#endif
+#endif
   }
 }
 
