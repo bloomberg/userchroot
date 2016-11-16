@@ -322,7 +322,8 @@ static int proc_guard(void *v) {
     fprintf(stderr, "Failed to clone. Error: %s\n", strerror(errno));
   }
   else {
-    int child_status = 0;
+    // init to -1 in case waitpid fails and leaves it untouched.
+    int child_status = -1;
     int p = 0;
     while (p = waitpid(child_pid, &child_status, 0)) {
       if (p == child_pid || p == -1) {
@@ -605,7 +606,7 @@ int main(int argc, char* argv[], char* envp[]) {
       return child_pid;
     }
     else {
-      int child_status = 0;
+      int child_status = -1;
       int p = 0;
       while (p = waitpid(child_pid, &child_status, 0)) {
         if (p == child_pid || p == -1) {
