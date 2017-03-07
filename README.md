@@ -4,7 +4,7 @@ This tool allows a system administrator to create pre-defined chroot
 locations and allow regular users to run processes on those
 environments.
 
-We use it at Bloomberg to allow non-priviledged users to run builds on
+We use it at Bloomberg to allow non-privileged users to run builds on
 a chroot'd environment on Linux x86_64, Solaris sparc, and AIX
 powerpc.
 
