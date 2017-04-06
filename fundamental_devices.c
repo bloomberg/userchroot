@@ -163,6 +163,12 @@ int create_fundamental_devices(const char* chroot_path) {
     }
     free(fullpath);
 #endif
+
+  // add mount for /dev/poll on Solaris
+#if defined(sun) || defined(__sun)
+  create_fundamental_device(chroot_path,"/dev/poll");
+#endif
+
   umask(original_mask);
   return 0;
 }
@@ -172,6 +178,7 @@ int unlink_fundamental_devices(const char* chroot_path) {
   unlink_fundamental_device(chroot_path,"/dev/zero");
   unlink_fundamental_device(chroot_path,"/dev/random");
   unlink_fundamental_device(chroot_path,"/dev/urandom");
+
   // unmount /dev/shm for linux only
 #ifdef __linux__
     char *fullpath = (char *)
@@ -191,6 +198,12 @@ int unlink_fundamental_devices(const char* chroot_path) {
     }
     free(fullpath);
 #endif
+
+  // unmount /dev/poll on Solaris
+#if defined(sun) || defined(__sun)
+  unlink_fundamental_device(chroot_path,"/dev/poll");
+#endif
+
   return 0;
 }
 
