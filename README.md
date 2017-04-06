@@ -18,6 +18,7 @@ you may need to make available. Those devices are:
  * /dev/random
  * /dev/urandom
  * /dev/null
+ * /dev/poll (Solaris only)
 
 The userchroot command offers a "--install-devices" and
 "--uninstall-devices" that will allow a non-privileged user to create
@@ -76,6 +77,11 @@ On Linux we also create /dev/shm and mount it as a tmpfs, since the
 GNU Libc will not only expect that location to exist, but it will also
 check that it is actually a tmpfs location. Without this, named pipes
 do not work on Linux.
+
+## __sun
+
+On Solaris, we mount the kernel poll device at /dev/poll. This is a
+Solaris-only replacement for `select` and `poll`.
 
 # How to install
 
