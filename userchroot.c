@@ -5,6 +5,7 @@
 #if defined (__linux__) && defined (MOUNT_PROC)
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
 #define _GNU_SOURCE
+#define USERCHROOT_USE_LINUX_CLONE
 #include <sched.h>
 #include <sys/mount.h>
 #include <sys/wait.h>
@@ -586,8 +587,7 @@ int main(int argc, char* argv[], char* envp[]) {
     ed->target_user = target_user;
     ed->argv = argv;
     ed->envp = envp;
-#if defined (__linux__) && defined (MOUNT_PROC)
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
+#if defined USERCHROOT_USE_LINUX_CLONE
 
     // Our goal here is to mount /proc without exposing other
     // processes to the invoked command. Basically, /proc should only
@@ -623,7 +623,6 @@ int main(int argc, char* argv[], char* envp[]) {
     // that the compiler wouldn't notice so we need to return from int
     // main here.
     return 0;
-#endif
 #endif
   }
 }
