@@ -19,6 +19,7 @@ you may need to make available. Those devices are:
  * /dev/urandom
  * /dev/null
  * /dev/poll (Solaris only)
+ * /dev/shm (Linux only)
 
 The userchroot command offers a "--install-devices" and
 "--uninstall-devices" that will allow a non-privileged user to create
