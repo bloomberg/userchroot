@@ -66,7 +66,7 @@ We include a compat implementation of clearenv for architectures where
 that system call is not available. This is evaluated by the makefile
 by using the test-clearenv.sh script.
 
-## _USER_MOUNT_LOFS_INSTEAD_OF_MKNOD
+## _USE_MOUNT_LOFS_INSTEAD_OF_MKNOD
 
 When running inside a Solaris zone, you will not be allowed to use
 mknod. As an alternative, the tool will allow you to use a lofs mount
