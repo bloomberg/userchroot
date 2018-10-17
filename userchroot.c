@@ -326,7 +326,7 @@ static int proc_guard(void *v) {
     // init to -1 in case waitpid fails and leaves it untouched.
     int child_status = -1;
     int p = 0;
-    while (p = waitpid(child_pid, &child_status, 0)) {
+    while (p = waitpid(-1, &child_status, 0)) {
       if (p == child_pid || p == -1) {
         break;
       }
@@ -341,7 +341,7 @@ static int proc_guard(void *v) {
 
     // now unlink the directory we made just to be clean.
     rmdir("/proc");
-    return child_status;
+    return WIFSIGNALED(child_status) ? 1 : WEXITSTATUS(child_status);
   }
 
 }
@@ -614,7 +614,7 @@ int main(int argc, char* argv[], char* envp[]) {
         }
       }
 
-      return child_status;
+      return WIFSIGNALED(child_status) ? 1 : WEXITSTATUS(child_status);
     }
 
 #else
