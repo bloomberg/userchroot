@@ -47,8 +47,14 @@ to the CONFIGFILE.
 
 ## CONFIGFILE
 
-This variable (defaults to $(PREFIX)/etc/userchroot.conf) will set the
-path for the config file. The tool will verify that the file as well
+This variable (defaults to /etc/userchroot.conf) will set the
+path for the config file. 
+
+This tool will check for the config file in two places:
+* `$(PREFIX)/etc/userchroot.conf`
+* `/etc/userchroot.conf`
+
+The tool will verify that the file as well
 as the entire path leading to the file is root owned, has limited
 permissions and is not a symbolic link.
 

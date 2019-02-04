@@ -1,5 +1,5 @@
 PREFIX?=/bldroot
-CONFIGFILE?=$(PREFIX)/etc/userchroot.conf
+CONFIGFILE?=/etc/userchroot.conf
 
 GIT_DESCRIBE:=$(shell git describe --tags --long 2>/dev/null)
 VERSION_TEMPLATE:='$$Id: userchroot GIT_DESCRIBE $$'
@@ -10,6 +10,7 @@ HAVE_CLEARENV:=$(shell CC=$(CC) $(VPATH)/test-clearenv.sh && \
 	         echo "-D_HAVE_CLEARENV")
 
 CFLAGS+= -DCONFIGFILE=$(CONFIGFILE) \
+	 -DPREFIX=$(PREFIX) \
 	 -DVERSION_STRING=$(VERSION_STRING) \
 	 $(HAVE_CLEARENV) \
 	 -DMOUNT_PROC

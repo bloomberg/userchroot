@@ -59,10 +59,19 @@
 #define EXPANDED2(X) #X
 #define EXPANDED(X) EXPANDED2(X)
 
+// these two macros serve the purpose of concatenating two -D clause 
+// variables.
+// As seen in: http://c-faq.com/cpp/oldpaste.html
+#define PASTE(X) X
+#define CAT(X,Y) PASTE(X)Y
+
 #ifndef CONFIGFILE
 #error CONFIGFILE should be defined at build time
 #endif
-static const char CFG[] = EXPANDED(CONFIGFILE);
+
+static const char *CFG_FILES[] = {EXPANDED(CONFIGFILE), EXPANDED(CAT(PREFIX,CONFIGFILE))};
+
+#define CFG_ARRAY_SIZE sizeof(CFG_FILES)/sizeof(CFG_FILES[0])
 
 #ifndef VERSION_STRING
 #error VERSION_STRING should be defined at build time
@@ -146,27 +155,27 @@ static void check_base_path(const char* path) {
 
 }
 
-static void check_config_file(FILE* config) {
+static void check_config_file(FILE* config, const char* cfg) {
   int rc; // generic return code checking
   // all the path up to that configfile should be owned and writable only by root
-  check_base_path(CFG);
+  check_base_path(cfg);
 
   // make sure configuration exists and has sane permissions
   struct stat configfilestat;
-  rc = lstat(CFG, &configfilestat);
+  rc = lstat(cfg, &configfilestat);
   if (rc != 0) {
-    fprintf(stderr,"Failed to stat config file %s. Aborting.\n", CFG);
+    fprintf(stderr,"Failed to stat config file %s. Aborting.\n", cfg);
     exit(ERR_EXIT_CODE);
   }
   if (!S_ISREG(configfilestat.st_mode)) {
-    fprintf(stderr,"Configuration file %s is not a regular file.\n", CFG);
+    fprintf(stderr,"Configuration file %s is not a regular file.\n", cfg);
   }
   if (configfilestat.st_uid != 0) {
-    fprintf(stderr,"Configuration file %s should be owned by root. Aborting.\n", CFG);
+    fprintf(stderr,"Configuration file %s should be owned by root. Aborting.\n", cfg);
     exit(ERR_EXIT_CODE);
   }
   if (configfilestat.st_mode & 00022) {
-    fprintf(stderr,"Configuration file %s has non-restrictive permissions. Aborting.\n", CFG);
+    fprintf(stderr,"Configuration file %s has non-restrictive permissions. Aborting.\n", cfg);
     exit(ERR_EXIT_CODE);
   }
   dev_t device = configfilestat.st_dev;
@@ -372,12 +381,22 @@ int main(int argc, char* argv[], char* envp[]) {
   // we open the config file first to avoid time-of-check-time-of-use
   // race conditions. The file is sent to check_config_file to make
   // sure we actually opened the same file that we are stat-ing.
-  FILE* config = fopen(CFG, "r");
+  FILE *config = NULL;
+  for (int i = 0; i < CFG_ARRAY_SIZE; ++i) {
+    config = fopen(CFG_FILES[i], "r");
+    if (config != NULL) {
+      check_config_file(config, CFG_FILES[i]);
+      break;
+    }
+  }
+
   if (config == NULL) {
-    fprintf(stderr,"Failed to open configuration file %s. Aborting.\n", CFG);
+    for (int i = 0; i < CFG_ARRAY_SIZE; ++i) {
+      fprintf(stderr, "Failed to open configuration file %s\n", CFG_FILES[i]);
+    }
+    fprintf(stderr, "Aborting.\n");
     exit(ERR_EXIT_CODE);
   }
-  check_config_file(config);
 
   // let's get the path
   char* path;
