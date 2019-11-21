@@ -290,13 +290,30 @@ static int child_fn(void* v) {
 }
 
 static int proc_guard(void *v) {
+  // Mark all mounts in the new mount namespace as slave mounts to avoid
+  // propagating new mounts to the outside world.
+  int rc = mount(NULL, "/", NULL, MS_SLAVE | MS_REC, NULL);
+  if (rc != 0) {
+    fprintf(
+            stderr,
+            "Failed to mark mounts as slave. Error: %s\n", strerror(errno)
+            );
+    return rc;
+  }
+
+  // Now the actual chroot call.
+  rc = chroot(".");
+  if (rc != 0) {
+    fprintf(stderr,"Failed to chroot. Aborting.\n");
+    return rc;
+  }
 
   // Since we're in the chroot, we don't need to unmount the current
   // proc, simply because there isn't any current proc mounted.
   //
   // Mount the child's view of proc, which includes only processes
   // in its namespace.
-  int rc = mkdir("/proc", S_IRWXU);
+  rc = mkdir("/proc", S_IRWXU);
   if(0 != rc && EEXIST != errno) {
     fprintf(
             stderr,
@@ -590,12 +607,6 @@ int main(int argc, char* argv[], char* envp[]) {
       fprintf(stderr,"Failed to chdir to the chroot directory. Aborting.\n");
       exit(ERR_EXIT_CODE);
     }
-    // Now the actual chroot call.
-    rc = chroot(final_path);
-    if (rc != 0) {
-      fprintf(stderr,"Failed to chroot. Aborting.\n");
-      exit(ERR_EXIT_CODE);
-    }
 
     struct epilogue_data* ed =
       (struct epilogue_data*)malloc(sizeof(struct epilogue_data));
@@ -637,6 +648,13 @@ int main(int argc, char* argv[], char* envp[]) {
     }
 
 #else
+    // Now the actual chroot call.
+    rc = chroot(final_path);
+    if (rc != 0) {
+      fprintf(stderr,"Failed to chroot. Aborting.\n");
+      exit(ERR_EXIT_CODE);
+    }
+
     epilogue(ed);
     // Should never get here as epilogue does execve but it's possible
     // that the compiler wouldn't notice so we need to return from int
