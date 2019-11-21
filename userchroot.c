@@ -277,8 +277,7 @@ void epilogue(struct epilogue_data* d) {
   exit(ERR_EXIT_CODE);
 }
 
-#if defined (__linux__) && defined (MOUNT_PROC)
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
+#if defined USERCHROOT_USE_LINUX_CLONE
 
 static char child_stack[1048576];
 
@@ -303,6 +302,7 @@ static int child_fn(void* v) {
     return rc;
   }
 
+#if defined (MOUNT_PROC)
   // Since we're in the chroot, we don't need to unmount the current
   // proc, simply because there isn't any current proc mounted.
   //
@@ -332,11 +332,11 @@ static int child_fn(void* v) {
       return rc;
     }
   }
+#endif
 
   epilogue(ed);
   return 0;
 }
-#endif
 #endif
 
 int main(int argc, char* argv[], char* envp[]) {
