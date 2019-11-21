@@ -2,14 +2,12 @@
 #include <linux/version.h>
 #endif
 
-#if defined (__linux__) && defined (MOUNT_PROC)
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
+#if defined (__linux__)
 #define _GNU_SOURCE
 #define USERCHROOT_USE_LINUX_CLONE
 #include <sched.h>
 #include <sys/mount.h>
 #include <sys/wait.h>
-#endif
 #endif
 
 #include <unistd.h>
