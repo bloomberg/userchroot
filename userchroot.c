@@ -279,6 +279,47 @@ void epilogue(struct epilogue_data* d) {
 
 static char child_stack[1048576];
 
+static int mount_shm(void) {
+    struct stat statbuf;
+    mode_t perms = (0777 | S_ISVTX);
+    const char *path = "/dev/shm";
+
+    mkdir(path, perms);
+    if (chown(path, 0, 0) < 0)
+    {
+        fprintf(stderr, "Could not chown %s to root.  Aborting.\n", path);
+        return ERR_EXIT_CODE;
+    }
+    if (chmod(path, perms) < 0)
+    {
+        fprintf(stderr, "Could not chmod %s to 777+sticky.  Aborting.\n",
+            path);
+        return ERR_EXIT_CODE;
+    }
+    if (stat(path, &statbuf) < 0)
+    {
+        fprintf(stderr, "Could not stat %s.  Aborting.\n", path);
+        return ERR_EXIT_CODE;
+    }
+    if (!S_ISDIR(statbuf.st_mode))
+    {
+        fprintf(stderr, "%s not a directory.  Aborting.\n", path);
+        return ERR_EXIT_CODE;
+    }
+    if ((statbuf.st_mode & perms) != perms)
+    {
+        fprintf(stderr, "Wrong perms on %s.  Aborting.\n", path);
+        return ERR_EXIT_CODE;
+    }
+    if (mount("tmpfs", path, "tmpfs", MS_MGC_VAL, "size=128m") < 0)
+    {
+        fprintf(stderr, "Could not mount %s.  Aborting.\n", path);
+        return ERR_EXIT_CODE;
+    }
+
+    return 0;
+}
+
 static int child_fn(void* v) {
   struct epilogue_data* ed = (struct epilogue_data*)v;
 
@@ -297,6 +338,11 @@ static int child_fn(void* v) {
   rc = chroot(".");
   if (rc != 0) {
     fprintf(stderr,"Failed to chroot. Aborting.\n");
+    return rc;
+  }
+
+  rc = mount_shm();
+  if (rc != 0) {
     return rc;
   }
 
