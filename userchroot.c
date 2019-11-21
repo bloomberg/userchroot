@@ -69,7 +69,7 @@
 #error CONFIGFILE should be defined at build time
 #endif
 
-static const char *CFG_FILES[] = {EXPANDED(CONFIGFILE), EXPANDED(CAT(PREFIX,CONFIGFILE))};
+static const char *CFG_FILES[] = {EXPANDED(CAT(PREFIX,CONFIGFILE)), EXPANDED(CONFIGFILE)};
 
 #define CFG_ARRAY_SIZE sizeof(CFG_FILES)/sizeof(CFG_FILES[0])
 
