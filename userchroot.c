@@ -591,9 +591,12 @@ int main(int argc, char* argv[], char* envp[]) {
       exit(ERR_EXIT_CODE);
     }
 
-    // this mode can only be run by the owner of the chroot image.
-    if (target_user != statbase_path.st_uid) {
-      fprintf(stderr,"install or uninstall devices can only be called by the owner of the chroot. Aborting.\n");
+    // this mode can only be run by the owner of the chroot image or
+    // users with write access to the /dev directory in the chroot image.
+    if (target_user != statbase_path.st_uid &&
+        access(dev_path, R_OK | W_OK | X_OK) != 0) {
+      fprintf(stderr,"install or uninstall devices can only be called by the owner of the chroot "
+        "or users with write access to /dev in the chroot. Error: %s\n", strerror(errno));
       exit(ERR_EXIT_CODE);
     }
 
