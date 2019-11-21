@@ -46,10 +46,19 @@ static void create_fundamental_device(const char* chroot_path,
     fprintf(stderr,"Failed to stat %s. Aborting.\n", device_path);
     exit(ERR_EXIT_CODE);
   }
+  // we need to let the devices be created with the appropriate
+  // modes. However, since the file will be group-owned by
+  // the user creating the device, we make sure the new mount permissions
+  // prevent the user from having any permission granted just by the group.
+
+  // Clear out existing group permission bits
+  mode_t device_mode = realdev.st_mode  & (~S_IRWXG);
+  // Set new group permission bits to be identical to other's permission bits
+  device_mode = device_mode | ((device_mode & S_IRWXO) << 3);
 #ifdef _USE_MOUNT_LOFS_INSTEAD_OF_MKNOD
   char  mount_optbuf[MAX_MNTOPT_STR] = { '\0', };
 
-  rc = mkdir(final_path, 0755);
+  rc = mkdir(final_path, device_mode);
   if (rc) {
     fprintf(stderr,"Failed to mkdir %s to mount. Aborting.\n", final_path);
   }
@@ -60,7 +69,7 @@ static void create_fundamental_device(const char* chroot_path,
     exit(ERR_EXIT_CODE);
   }
 #else
-  rc = mknod(final_path, realdev.st_mode, realdev.st_rdev);
+  rc = mknod(final_path, device_mode, realdev.st_rdev);
   if (rc) {
     fprintf(stderr,"Failed to create the device for %s.", final_path);
     exit(ERR_EXIT_CODE);
@@ -107,11 +116,7 @@ static void unlink_fundamental_device(const char* chroot_path,
 }
 
 int create_fundamental_devices(const char* chroot_path) {
-  // we need to let the devices be created with the appropriate
-  // modes. However, since the file will be group-owned by
-  // the user creating the device, we make sure the umask prevent
-  // the user from having any permission granted just by the group.
-  mode_t original_mask = umask(0070);
+  mode_t original_mask = umask(0000);
   create_fundamental_device(chroot_path,"/dev/null");
   create_fundamental_device(chroot_path,"/dev/zero");
   create_fundamental_device(chroot_path,"/dev/random");
