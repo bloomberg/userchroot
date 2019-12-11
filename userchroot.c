@@ -566,11 +566,39 @@ int main(int argc, char* argv[], char* envp[]) {
       argv[2] != NULL &&
       argv[2][0] == '-') {
 
+    int dev_path_size = strlen(final_path) + strlen("/dev") + 1;
+    char* dev_path = malloc(dev_path_size);
+    if (dev_path == NULL) {
+      fprintf(stderr,"Failed to allocate memory. Aborting.\n");
+      exit(ERR_EXIT_CODE);
+    }
+    rc = snprintf(dev_path, dev_path_size, "%s/dev", final_path);
+    if (rc <= 0) {
+      fprintf(stderr,"Failed to assemble /dev path. Aborting.\n");
+      exit(ERR_EXIT_CODE);
+    }
+
+    // verify /dev is a directory and not a symlink
+    struct stat statdev_path;
+    rc = lstat(dev_path, &statdev_path);
+    if (rc != 0) {
+      fprintf(stderr,"Failed to stat %s. Aborting.\n", dev_path);
+      exit(ERR_EXIT_CODE);
+    }
+    if (!S_ISDIR(statdev_path.st_mode)) {
+      fprintf(stderr,"%s is not a directory. Aborting.\n", dev_path);
+      USAGE();
+      exit(ERR_EXIT_CODE);
+    }
+
     // this mode can only be run by the owner of the chroot image.
     if (target_user != statbase_path.st_uid) {
       fprintf(stderr,"install or uninstall devices can only be called by the owner of the chroot. Aborting.\n");
       exit(ERR_EXIT_CODE);
     }
+
+    free(dev_path);
+    dev_path = NULL;
 
     if (strncmp("--install-devices",argv[2],17) == 0) {
       rc = create_fundamental_devices(final_path);
