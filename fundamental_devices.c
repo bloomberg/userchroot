@@ -12,10 +12,6 @@
 #include <sys/mount.h>
 #endif
 
-#ifdef __linux__
-#include <sys/mount.h>
-#endif
-
 #include "userchroot.h"
 #include "fundamental_devices.h"
 
@@ -122,53 +118,6 @@ int create_fundamental_devices(const char* chroot_path) {
   create_fundamental_device(chroot_path,"/dev/random");
   create_fundamental_device(chroot_path,"/dev/urandom");
 
-  // add a mount for /dev/shm for linux only
-#ifdef __linux__
-    char *fullpath = (char *)
-        malloc(strlen(chroot_path) + strlen("/dev/shm") + 1);
-    sprintf(fullpath, "%s/dev/shm", chroot_path);
-
-    struct stat statbuf;
-    mode_t perms = (0777 | S_ISVTX);
-
-    // clean up from a previous run and set up for this one
-    umount2(fullpath, MNT_FORCE);
-    rmdir(fullpath);
-    mkdir(fullpath, perms);
-    if (chown(fullpath, 0, 0) < 0)
-    {
-        fprintf(stderr, "Could not chown %s to root.  Aborting.\n", fullpath);
-        exit(ERR_EXIT_CODE);
-    }
-    if (chmod(fullpath, perms) < 0)
-    {
-        fprintf(stderr, "Could not chmod %s to 777+sticky.  Aborting.\n",
-            fullpath);
-        exit(ERR_EXIT_CODE);
-    }
-    if (stat(fullpath, &statbuf) < 0)
-    {
-        fprintf(stderr, "Could not stat %s.  Aborting.\n", fullpath);
-        exit(ERR_EXIT_CODE);
-    }
-    if (!S_ISDIR(statbuf.st_mode))
-    {
-        fprintf(stderr, "%s not a directory.  Aborting.\n", fullpath);
-        exit(ERR_EXIT_CODE);
-    }
-    if ((statbuf.st_mode & perms) != perms)
-    {
-        fprintf(stderr, "Wrong perms on %s.  Aborting.\n", fullpath);
-        exit(ERR_EXIT_CODE);
-    }
-    if (mount("tmpfs", fullpath, "tmpfs", MS_MGC_VAL, "size=128m") < 0)
-    {
-        fprintf(stderr, "Could not mount %s.  Aborting.\n", fullpath);
-        exit(ERR_EXIT_CODE);
-    }
-    free(fullpath);
-#endif
-
   // add mount for /dev/poll on Solaris
 #if defined(sun) || defined(__sun)
   create_fundamental_device(chroot_path,"/dev/poll");
@@ -183,26 +132,6 @@ int unlink_fundamental_devices(const char* chroot_path) {
   unlink_fundamental_device(chroot_path,"/dev/zero");
   unlink_fundamental_device(chroot_path,"/dev/random");
   unlink_fundamental_device(chroot_path,"/dev/urandom");
-
-  // unmount /dev/shm for linux only
-#ifdef __linux__
-    char *fullpath = (char *)
-        malloc(strlen(chroot_path) + strlen("/dev/shm") + 1);
-    sprintf(fullpath, "%s/dev/shm", chroot_path);
-    if (umount2(fullpath, MNT_FORCE) < 0)
-    {
-        fprintf(stderr, "Could not unmount %s (%s).  Aborting.\n",
-            fullpath, strerror(errno));
-        exit(ERR_EXIT_CODE);
-    }
-    if (rmdir(fullpath) < 0)
-    {
-        fprintf(stderr, "Could not rmdir %s (%s).  Aborting.\n",
-            fullpath, strerror(errno));
-        exit(ERR_EXIT_CODE);
-    }
-    free(fullpath);
-#endif
 
   // unmount /dev/poll on Solaris
 #if defined(sun) || defined(__sun)

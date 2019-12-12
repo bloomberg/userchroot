@@ -2,14 +2,12 @@
 #include <linux/version.h>
 #endif
 
-#if defined (__linux__) && defined (MOUNT_PROC)
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
+#if defined (__linux__)
 #define _GNU_SOURCE
 #define USERCHROOT_USE_LINUX_CLONE
 #include <sched.h>
 #include <sys/mount.h>
 #include <sys/wait.h>
-#endif
 #endif
 
 #include <unistd.h>
@@ -277,26 +275,84 @@ void epilogue(struct epilogue_data* d) {
   exit(ERR_EXIT_CODE);
 }
 
-#if defined (__linux__) && defined (MOUNT_PROC)
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
+#if defined USERCHROOT_USE_LINUX_CLONE
 
 static char child_stack[1048576];
-static char proc_guard_stack[1048576];
+
+static int mount_shm(void) {
+    struct stat statbuf;
+    mode_t perms = (0777 | S_ISVTX);
+    const char *path = "/dev/shm";
+
+    mkdir(path, perms);
+    if (chown(path, 0, 0) < 0)
+    {
+        fprintf(stderr, "Could not chown %s to root.  Aborting.\n", path);
+        return ERR_EXIT_CODE;
+    }
+    if (chmod(path, perms) < 0)
+    {
+        fprintf(stderr, "Could not chmod %s to 777+sticky.  Aborting.\n",
+            path);
+        return ERR_EXIT_CODE;
+    }
+    if (stat(path, &statbuf) < 0)
+    {
+        fprintf(stderr, "Could not stat %s.  Aborting.\n", path);
+        return ERR_EXIT_CODE;
+    }
+    if (!S_ISDIR(statbuf.st_mode))
+    {
+        fprintf(stderr, "%s not a directory.  Aborting.\n", path);
+        return ERR_EXIT_CODE;
+    }
+    if ((statbuf.st_mode & perms) != perms)
+    {
+        fprintf(stderr, "Wrong perms on %s.  Aborting.\n", path);
+        return ERR_EXIT_CODE;
+    }
+    if (mount("tmpfs", path, "tmpfs", MS_MGC_VAL, "size=128m") < 0)
+    {
+        fprintf(stderr, "Could not mount %s.  Aborting.\n", path);
+        return ERR_EXIT_CODE;
+    }
+
+    return 0;
+}
 
 static int child_fn(void* v) {
   struct epilogue_data* ed = (struct epilogue_data*)v;
-  epilogue(ed);
-  return 0;
-}
 
-static int proc_guard(void *v) {
+  // Mark all mounts in the new mount namespace as slave mounts to avoid
+  // propagating new mounts to the outside world.
+  int rc = mount(NULL, "/", NULL, MS_SLAVE | MS_REC, NULL);
+  if (rc != 0) {
+    fprintf(
+            stderr,
+            "Failed to mark mounts as slave. Error: %s\n", strerror(errno)
+            );
+    return rc;
+  }
 
+  // Now the actual chroot call.
+  rc = chroot(".");
+  if (rc != 0) {
+    fprintf(stderr,"Failed to chroot. Aborting.\n");
+    return rc;
+  }
+
+  rc = mount_shm();
+  if (rc != 0) {
+    return rc;
+  }
+
+#if defined (MOUNT_PROC)
   // Since we're in the chroot, we don't need to unmount the current
   // proc, simply because there isn't any current proc mounted.
   //
   // Mount the child's view of proc, which includes only processes
   // in its namespace.
-  int rc = mkdir("/proc", S_IRWXU);
+  rc = mkdir("/proc", S_IRWXU);
   if(0 != rc && EEXIST != errno) {
     fprintf(
             stderr,
@@ -320,41 +376,11 @@ static int proc_guard(void *v) {
       return rc;
     }
   }
-
-  pid_t child_pid =
-    clone(
-          child_fn,
-          child_stack+sizeof(child_stack),
-          SIGCHLD,
-          v
-          );
-  if(-1 == child_pid) {
-    fprintf(stderr, "Failed to clone. Error: %s\n", strerror(errno));
-  }
-  else {
-    // init to -1 in case waitpid fails and leaves it untouched.
-    int child_status = -1;
-    int p = 0;
-    while (p = waitpid(-1, &child_status, 0)) {
-      if (p == child_pid || p == -1) {
-        break;
-      }
-    }
-
-    // always try and unmount even if the pid failed so we don't leak.
-    int umount_rc = umount("/proc");
-
-    if (umount_rc) {
-      fprintf(stderr, "Failed to umount. Error: %s\n", strerror(errno));
-    }
-
-    // now unlink the directory we made just to be clean.
-    rmdir("/proc");
-    return WIFSIGNALED(child_status) ? 1 : WEXITSTATUS(child_status);
-  }
-
-}
 #endif
+
+  epilogue(ed);
+  return 0;
+}
 #endif
 
 int main(int argc, char* argv[], char* envp[]) {
@@ -590,12 +616,6 @@ int main(int argc, char* argv[], char* envp[]) {
       fprintf(stderr,"Failed to chdir to the chroot directory. Aborting.\n");
       exit(ERR_EXIT_CODE);
     }
-    // Now the actual chroot call.
-    rc = chroot(final_path);
-    if (rc != 0) {
-      fprintf(stderr,"Failed to chroot. Aborting.\n");
-      exit(ERR_EXIT_CODE);
-    }
 
     struct epilogue_data* ed =
       (struct epilogue_data*)malloc(sizeof(struct epilogue_data));
@@ -611,13 +631,11 @@ int main(int argc, char* argv[], char* envp[]) {
     // Our goal here is to mount /proc without exposing other
     // processes to the invoked command. Basically, /proc should only
     // give the invoked command a view of itself and all the processes
-    // it forked.  However, we have to have two levels of indirection
-    // via clone so that we can detect the completion of the execve
-    // and cleanup after ourselves.
+    // it forked.
     pid_t child_pid =
       clone(
-            proc_guard,
-            proc_guard_stack + sizeof(proc_guard_stack),
+            child_fn,
+            child_stack + sizeof(child_stack),
             CLONE_NEWNS | CLONE_NEWPID | SIGCHLD,
             ed);
     if(-1 == child_pid) {
@@ -637,6 +655,13 @@ int main(int argc, char* argv[], char* envp[]) {
     }
 
 #else
+    // Now the actual chroot call.
+    rc = chroot(final_path);
+    if (rc != 0) {
+      fprintf(stderr,"Failed to chroot. Aborting.\n");
+      exit(ERR_EXIT_CODE);
+    }
+
     epilogue(ed);
     // Should never get here as epilogue does execve but it's possible
     // that the compiler wouldn't notice so we need to return from int
