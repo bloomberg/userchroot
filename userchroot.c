@@ -57,7 +57,7 @@
 #define EXPANDED2(X) #X
 #define EXPANDED(X) EXPANDED2(X)
 
-// these two macros serve the purpose of concatenating two -D clause 
+// these two macros serve the purpose of concatenating two -D clause
 // variables.
 // As seen in: http://c-faq.com/cpp/oldpaste.html
 #define PASTE(X) X
@@ -667,7 +667,7 @@ int main(int argc, char* argv[], char* envp[]) {
       clone(
             child_fn,
             child_stack + sizeof(child_stack),
-            CLONE_NEWNS | CLONE_NEWPID | SIGCHLD,
+            CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWIPC | SIGCHLD,
             ed);
     if(-1 == child_pid) {
       fprintf(stderr, "Failed to clone. Error: %s\n", strerror(errno));
