@@ -284,7 +284,6 @@ static int mount_shm(void) {
     mode_t perms = (0777 | S_ISVTX);
     const char *path = "/dev/shm";
 
-    mkdir(path, perms);
     if (chown(path, 0, 0) < 0)
     {
         fprintf(stderr, "Could not chown %s to root.  Aborting.\n", path);
@@ -352,29 +351,19 @@ static int child_fn(void* v) {
   //
   // Mount the child's view of proc, which includes only processes
   // in its namespace.
-  rc = mkdir("/proc", S_IRWXU);
-  if(0 != rc && EEXIST != errno) {
+  rc = mount(
+             "proc",
+             "/proc",
+             "proc",
+             MS_REC|MS_NOSUID|MS_NODEV|MS_NOEXEC,
+             NULL
+             );
+  if(0 != rc) {
     fprintf(
             stderr,
-            "Failed to mkdir /proc. Error: %s\n", strerror(errno)
+            "Failed to mount proc. Error: %s\n", strerror(errno)
             );
     return rc;
-  }
-  else {
-    rc = mount(
-               "proc",
-               "/proc",
-               "proc",
-               MS_REC|MS_NOSUID|MS_NODEV|MS_NOEXEC,
-               NULL
-               );
-    if(0 != rc) {
-      fprintf(
-              stderr,
-              "Failed to mount proc. Error: %s\n", strerror(errno)
-              );
-      return rc;
-    }
   }
 #endif
 
@@ -382,6 +371,70 @@ static int child_fn(void* v) {
   return 0;
 }
 #endif
+
+// Create a directory within the chroot path with the specified mode
+// intended to be used as a mount point.
+int create_mount_directory(const char* chroot_path,
+                          const char* directory,
+                          const mode_t perms) {
+  int dir_path_len = strlen(chroot_path) + strlen(directory) + 1;
+  char* dir_path = malloc(dir_path_len);
+  if (dir_path == NULL) {
+    fprintf(stderr,"Failed to allocate memory.\n");
+    return 1;
+  }
+  int rc = snprintf(dir_path, dir_path_len, "%s%s", chroot_path, directory);
+  if (rc <= 0) {
+    fprintf(stderr,"Failed to assemble path.\n");
+    free(dir_path);
+    return 1;
+  }
+  rc = mkdir(dir_path, perms);
+  if (rc < 0 && errno != EEXIST) {
+    fprintf(stderr, "Failed to mkdir %s. Error: %s\n", dir_path, strerror(errno));
+    free(dir_path);
+    return 1;
+  }
+  free(dir_path);
+  return 0;
+}
+
+int remove_mount_directory(const char* chroot_path,
+                          const char* directory) {
+  int dir_path_len = strlen(chroot_path) + strlen(directory) + 1;
+  char* dir_path = malloc(dir_path_len);
+  if (dir_path == NULL) {
+    fprintf(stderr,"Failed to allocate memory.\n");
+    return 1;
+  }
+  int rc = snprintf(dir_path, dir_path_len, "%s%s", chroot_path, directory);
+  if (rc <= 0) {
+    fprintf(stderr,"Failed to assemble path.\n");
+    free(dir_path);
+    return 1;
+  }
+  // Make sure this directory is st_uid to guard against removing
+  // directories userchroot itself didn't create
+  struct stat statbuf;
+  rc = stat(dir_path, &statbuf);
+  if(rc < 0) {
+    fprintf(stderr, "Unable to stat %s.\n", dir_path);
+    free(dir_path);
+    return 1;
+  }
+  if(statbuf.st_uid != 0) {
+    free(dir_path);
+    return 0;
+  }
+  rc = rmdir(dir_path);
+  if (rc) {
+    fprintf(stderr, "Failed to rmdir %s.\n", dir_path);
+    free(dir_path);
+    return 1;
+  }
+  free(dir_path);
+  return 0;
+}
 
 int main(int argc, char* argv[], char* envp[]) {
   portable_clearenv();
@@ -631,9 +684,17 @@ int main(int argc, char* argv[], char* envp[]) {
 
     if (strncmp("--install-devices",argv[2],17) == 0) {
       rc = create_fundamental_devices(final_path);
+      rc |= create_mount_directory(final_path, "/dev/shm", (0777 | S_ISVTX));
+#ifdef MOUNT_PROC
+      rc |= create_mount_directory(final_path, "/proc", S_IRWXU);
+#endif
       exit(rc);
     } else if (strncmp("--uninstall-devices",argv[2],19) == 0) {
       rc = unlink_fundamental_devices(final_path);
+      rc |= remove_mount_directory(final_path, "/dev/shm");
+#ifdef MOUNT_PROC
+      rc |= remove_mount_directory(final_path, "/proc");
+#endif
       exit(rc);
     } else {
       USAGE();
