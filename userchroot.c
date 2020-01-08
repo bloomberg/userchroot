@@ -281,21 +281,9 @@ static char child_stack[1048576];
 
 static int mount_shm(void) {
     struct stat statbuf;
-    mode_t perms = (0777 | S_ISVTX);
     const char *path = "/dev/shm";
 
-    if (chown(path, 0, 0) < 0)
-    {
-        fprintf(stderr, "Could not chown %s to root.  Aborting.\n", path);
-        return ERR_EXIT_CODE;
-    }
-    if (chmod(path, perms) < 0)
-    {
-        fprintf(stderr, "Could not chmod %s to 777+sticky.  Aborting.\n",
-            path);
-        return ERR_EXIT_CODE;
-    }
-    if (stat(path, &statbuf) < 0)
+    if (lstat(path, &statbuf) < 0)
     {
         fprintf(stderr, "Could not stat %s.  Aborting.\n", path);
         return ERR_EXIT_CODE;
@@ -303,11 +291,6 @@ static int mount_shm(void) {
     if (!S_ISDIR(statbuf.st_mode))
     {
         fprintf(stderr, "%s not a directory.  Aborting.\n", path);
-        return ERR_EXIT_CODE;
-    }
-    if ((statbuf.st_mode & perms) != perms)
-    {
-        fprintf(stderr, "Wrong perms on %s.  Aborting.\n", path);
         return ERR_EXIT_CODE;
     }
     if (mount("tmpfs", path, "tmpfs", MS_MGC_VAL, "size=128m") < 0)
@@ -413,10 +396,10 @@ int remove_mount_directory(const char* chroot_path,
     free(dir_path);
     return 1;
   }
-  // Make sure this directory is st_uid to guard against removing
-  // directories userchroot itself didn't create
+  // Make sure this directory is owned by root to guard against
+  // removing directories userchroot itself didn't create
   struct stat statbuf;
-  rc = stat(dir_path, &statbuf);
+  rc = lstat(dir_path, &statbuf);
   if(rc < 0) {
     fprintf(stderr, "Unable to stat %s.\n", dir_path);
     free(dir_path);
@@ -684,16 +667,20 @@ int main(int argc, char* argv[], char* envp[]) {
 
     if (strncmp("--install-devices",argv[2],17) == 0) {
       rc = create_fundamental_devices(final_path);
-      rc |= create_mount_directory(final_path, "/dev/shm", (0777 | S_ISVTX));
+#ifdef __linux__
+      rc |= create_mount_directory(final_path, "/dev/shm", S_IRWXU);
 #ifdef MOUNT_PROC
       rc |= create_mount_directory(final_path, "/proc", S_IRWXU);
+#endif
 #endif
       exit(rc);
     } else if (strncmp("--uninstall-devices",argv[2],19) == 0) {
       rc = unlink_fundamental_devices(final_path);
+#ifdef __linux__
       rc |= remove_mount_directory(final_path, "/dev/shm");
 #ifdef MOUNT_PROC
       rc |= remove_mount_directory(final_path, "/proc");
+#endif
 #endif
       exit(rc);
     } else {
