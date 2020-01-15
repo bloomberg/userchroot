@@ -75,40 +75,45 @@ static void create_fundamental_device(const char* chroot_path,
   free(final_path);
 }
 
-static void unlink_fundamental_device(const char* chroot_path,
+static int unlink_fundamental_device(const char* chroot_path,
                                      const char* device_path) {
   int rc;
   int name_size = strlen(chroot_path) + strlen(device_path) + 1;
   char* final_path = malloc(name_size);
   if (final_path == NULL) {
-    fprintf(stderr,"Failed to allocate memory. Aborting.\n");
-    exit(ERR_EXIT_CODE);
+    fprintf(stderr,"Failed to allocate memory.\n");
+    return 1;
   }
   rc = snprintf(final_path, name_size, "%s%s", chroot_path, device_path);
   if (rc < 0) {
-    fprintf(stderr,"Failed to produce full path for device. Aborting.\n");
-    exit(ERR_EXIT_CODE);
+    fprintf(stderr,"Failed to produce full path for device.\n");
+    free(final_path);
+    return 1;
   }
 #ifdef _USE_MOUNT_LOFS_INSTEAD_OF_MKNOD
   rc = umount(final_path);
   if (rc) {
-    fprintf(stderr,"Failed to umount %s. Aborting.\n", final_path);
-    exit(ERR_EXIT_CODE);
+    fprintf(stderr,"Failed to umount %s.\n", final_path);
+    free(final_path);
+    return 1;
   }
   rc = rmdir(final_path);
   if (rc) {
-    fprintf(stderr,"Failed to rmdir %s. Aborting.\n", final_path);
-    exit(ERR_EXIT_CODE);
+    fprintf(stderr,"Failed to rmdir %s.\n", final_path);
+    free(final_path);
+    return 1;
   }
   rc = rmdir(final_path);
 #else
   rc = unlink(final_path);
   if (rc) {
-    fprintf(stderr,"Failed to unlink %s. Aborting.\n", final_path);
-    exit(ERR_EXIT_CODE);
+    fprintf(stderr,"Failed to unlink %s.\n", final_path);
+    free(final_path);
+    return 1;
   }
 #endif // _USE_MOUNT_LOFS_INSTEAD_OF_MKNOD
   free(final_path);
+  return 0;
 }
 
 int create_fundamental_devices(const char* chroot_path) {
@@ -128,17 +133,19 @@ int create_fundamental_devices(const char* chroot_path) {
 }
 
 int unlink_fundamental_devices(const char* chroot_path) {
-  unlink_fundamental_device(chroot_path,"/dev/null");
-  unlink_fundamental_device(chroot_path,"/dev/zero");
-  unlink_fundamental_device(chroot_path,"/dev/random");
-  unlink_fundamental_device(chroot_path,"/dev/urandom");
+  int err = 0;
+
+  err |= unlink_fundamental_device(chroot_path,"/dev/null");
+  err |= unlink_fundamental_device(chroot_path,"/dev/zero");
+  err |= unlink_fundamental_device(chroot_path,"/dev/random");
+  err |= unlink_fundamental_device(chroot_path,"/dev/urandom");
 
   // unmount /dev/poll on Solaris
 #if defined(sun) || defined(__sun)
-  unlink_fundamental_device(chroot_path,"/dev/poll");
+  err |= unlink_fundamental_device(chroot_path,"/dev/poll");
 #endif
 
-  return 0;
+  return err ? ERR_EXIT_CODE : 0;
 }
 
 // ----------------------------------------------------------------------------
