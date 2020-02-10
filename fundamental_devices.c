@@ -39,7 +39,8 @@ static void create_fundamental_device(const char* chroot_path,
   }
   rc = stat(device_path, &realdev);
   if (rc) {
-    fprintf(stderr,"Failed to stat %s. Aborting.\n", device_path);
+    fprintf(stderr,"Failed to stat %s: %s. Aborting.\n",
+            device_path, strerror(errno));
     exit(ERR_EXIT_CODE);
   }
   // we need to let the devices be created with the appropriate
@@ -56,18 +57,21 @@ static void create_fundamental_device(const char* chroot_path,
 
   rc = mkdir(final_path, device_mode);
   if (rc) {
-    fprintf(stderr,"Failed to mkdir %s to mount. Aborting.\n", final_path);
+    fprintf(stderr,"Failed to mkdir %s: %s. Aborting.\n",
+            final_path, strerror(errno));
   }
   rc = mount(device_path, final_path, MS_DATA|MS_OPTIONSTR,
              MNTTYPE_LOFS, NULL, 0, mount_optbuf, MAX_MNTOPT_STR);
   if (rc) {
-    fprintf(stderr,"Failed to lofs mount %s.", final_path);
+    fprintf(stderr,"Failed to lofs mount %s: %s",
+            final_path, strerror(errno));
     exit(ERR_EXIT_CODE);
   }
 #else
   rc = mknod(final_path, device_mode, realdev.st_rdev);
   if (rc) {
-    fprintf(stderr,"Failed to create the device for %s.", final_path);
+    fprintf(stderr,"Failed to create the device for %s: %s",
+            final_path, strerror(errno));
     exit(ERR_EXIT_CODE);
   }
 #endif // _USE_MOUNT_LOFS_INSTEAD_OF_MKNOD
@@ -93,13 +97,15 @@ static int unlink_fundamental_device(const char* chroot_path,
 #ifdef _USE_MOUNT_LOFS_INSTEAD_OF_MKNOD
   rc = umount(final_path);
   if (rc) {
-    fprintf(stderr,"Failed to umount %s.\n", final_path);
+    fprintf(stderr,"Failed to umount %s: %s.\n",
+            final_path, strerror(errno));
     free(final_path);
     return 1;
   }
   rc = rmdir(final_path);
   if (rc) {
-    fprintf(stderr,"Failed to rmdir %s.\n", final_path);
+    fprintf(stderr,"Failed to rmdir %s: %s.\n",
+            final_path, strerror(errno));
     free(final_path);
     return 1;
   }
@@ -107,7 +113,8 @@ static int unlink_fundamental_device(const char* chroot_path,
 #else
   rc = unlink(final_path);
   if (rc) {
-    fprintf(stderr,"Failed to unlink %s.\n", final_path);
+    fprintf(stderr,"Failed to unlink %s: %s.\n",
+            final_path, strerror(errno));
     free(final_path);
     return 1;
   }
