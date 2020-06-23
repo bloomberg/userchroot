@@ -1,18 +1,37 @@
-# userchroot - Allow regular users to invoke chroot'd processes
+# userchroot - Allow regular users to invoke a chroot'd processes
 
-This tool allows a system administrator to create pre-defined chroot
-locations and allow regular users to run processes on those
+`userchroot` is used heavily by the
+[`buildbox`](https://buildgrid.gitlab.io/buildbox/buildbox-home/) ecosystem to
+provide a simple and lightweight build sandbox.  Therefore, primary maintenance
+of `userchroot` now takes place over at
+[buildbox/userchroot](https://gitlab.com/BuildGrid/buildbox/userchroot). This
+repo will soon be archived.
+
+## Purpose
+
+The [chroot(2)](https://pubs.opengroup.org/onlinepubs/7908799/xsh/chroot.html) system call can be used to
+provide a restricted or new view onto an existing filesystem and thus has
+applications in build sandboxing. Normally it can only be invoked by an
+appropriately privileged user possessing the necessary capabilities or
+privileges. `userchroot` allows you to safely workaround that limitation,
+provided it can be installed and configured by a user with the requisite
+power. `userchroot` allows you to create pre-defined chroot locations and allow
+unprivileged users to safely run processes within those predefined
 environments.
 
-We use it at Bloomberg to allow non-privileged users to run builds on
-a chroot'd environment on Linux x86_64, Solaris sparc, and AIX
-powerpc.
+We use it at Bloomberg to allow non-privileged users to run builds on a
+chroot'd environment on Linux x86_64, Solaris sparc, and AIX powerpc. This
+provides sandboxing and consistent repeatability to builds across those
+platforms.
+
+It is similar to [schroot](https://wiki.debian.org/Schroot) and
+[bubblewrap](https://github.com/containers/bubblewrap).
 
 ## Fundamental Devices
 
-There are some devices that so many processes expect to exist, that
-when provisioning ephemeral chroot locations as a non-privileged user
-you may need to make available. Those devices are:
+There are some devices that so many processes expect to exist, that when
+provisioning ephemeral chroot locations as a non-privileged user you may need
+to make available. Those devices are:
 
  * /dev/zero
  * /dev/random
@@ -21,18 +40,15 @@ you may need to make available. Those devices are:
  * /dev/poll (Solaris only)
  * /dev/shm (Linux only)
 
-The userchroot command offers a "--install-devices" and
-"--uninstall-devices" that will allow a non-privileged user to create
-and destroy those devices.
+The userchroot command offers a "--install-devices" and "--uninstall-devices"
+that will allow a non-privileged user to create and destroy those devices.
 
-This allow us to run the entire build infrastructure as a
-non-privileged user.
+This allow us to run the entire build infrastructure as a non-privileged user.
 
 # How to build
 
-There is very little build-time customization, so we provide a simple
-Makefile that will use the implicit rules in order to build the
-executable.
+There is very little build-time customization, so we provide a simple Makefile
+that will use the implicit rules in order to build the executable.
 
 ```
 make
@@ -42,21 +58,22 @@ make
 
 ## PREFIX
 
-This variables (defaults to /usr/local) controls the default base path
-to the CONFIGFILE.
+This variables (defaults to `/usr/local`) controls the default base path to the
+CONFIGFILE.
 
 ## CONFIGFILE
 
-This variable (defaults to /etc/userchroot.conf) will set the
-path for the config file. 
+This variable (defaults to `/etc/userchroot.conf`) will set the path for the
+config file.
 
 This tool will check for the config file in two places:
 * `$(PREFIX)/etc/userchroot.conf`
 * `/etc/userchroot.conf`
 
-The tool will verify that the file as well
-as the entire path leading to the file is root owned, has limited
-permissions and is not a symbolic link.
+`$(PREFIX)` defaults to `bldroot` in the Makefile.
+
+The tool will verify that the file as well as the entire path leading to the
+file is root owned, has limited permissions and is not a symbolic link.
 
 ## VERSIONSTRING
 
@@ -66,40 +83,38 @@ identifying the version with `ident`.
 
 # Conditional compilations
 
-## _HAVE_CLEARENV
+## `_HAVE_CLEARENV`
 
-We include a compat implementation of clearenv for architectures where
-that system call is not available. This is evaluated by the makefile
-by using the test-clearenv.sh script.
+We include a compat implementation of clearenv for architectures where that
+system call is not available. This is evaluated by the makefile by using the
+test-clearenv.sh script.
 
-## _USE_MOUNT_LOFS_INSTEAD_OF_MKNOD
+## `_USE_MOUNT_LOFS_INSTEAD_OF_MKNOD`
 
-When running inside a Solaris zone, you will not be allowed to use
-mknod. As an alternative, the tool will allow you to use a lofs mount
-to the system location for the fundamental devices.
+When running inside a Solaris zone, you will not be allowed to use mknod. As an
+alternative, the tool will allow you to use a lofs mount to the system location
+for the fundamental devices.
 
-## __linux__
+## `__linux__`
 
-On Linux we also create /dev/shm and mount it as a tmpfs, since the
-GNU Libc will not only expect that location to exist, but it will also
-check that it is actually a tmpfs location. Without this, named pipes
-do not work on Linux.
+On Linux we also create /dev/shm and mount it as a tmpfs, since the GNU Libc
+will not only expect that location to exist, but it will also check that it is
+actually a tmpfs location. Without this, named pipes do not work on Linux.
 
-## __sun
+## `__sun`
 
 On Solaris, we mount the kernel poll device at /dev/poll. This is a
 Solaris-only replacement for `select` and `poll`.
 
 # How to install
 
-The executable needs to be setuid root, but it must *not* be setgid
-root. In fact, it will validate that you haven't given too much
-permissions to it.
+The executable needs to be setuid root, but it must *not* be setgid root. In
+fact, it will validate that you haven't given too much permissions to it.
 
 # How to use
 
-The config file must have the a path to a pre-approved chroot image
-and the name of the user that owns that image. In the format:
+The config file must have the a path to a pre-approved chroot directory and the
+name of the user that owns that directory. In the format:
 
 ```
 user:/path/to/userchroot/base
